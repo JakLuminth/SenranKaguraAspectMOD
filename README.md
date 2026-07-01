@@ -1,4 +1,4 @@
-# Senran Kagura EV/BrN Aspect Ratio MOD Tool (v1.1)
+# Senran Kagura EV/BrN Aspect Ratio MOD Tool (v1.2)
 
 A Windows desktop utility for applying widescreen and ultrawide aspect-ratio fixes to:
 

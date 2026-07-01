@@ -4,8 +4,6 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>SenranKaguraAspectMOD</AssemblyName>
-    <Nullable>enable</Nullable>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -13,6 +11,6 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Assets\4827930348255969816.png" LogicalName="Senran_Kagura_EV_BRN_Aspect_MOD.Assets.4827930348255969816.png" />
+    <EmbeddedResource Include="Assets\4827930348255969816.png" LogicalName="SenranKaguraAspectMOD.Assets.4827930348255969816.png" />
   </ItemGroup>
 </Project>
