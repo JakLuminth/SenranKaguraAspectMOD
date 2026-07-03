@@ -28,8 +28,8 @@ public class MainForm : Form
   private TextBox Box_Log = null!;
   private CheckBox Check_DeleteBackupsOnRevert = null!;
   private Button Button_ToggleLog = null!;
-  private readonly Size CollapsedWindowSize = new Size(524, 363);
-  private readonly Size ExpandedWindowSize = new Size(524, 469);
+  private readonly Size CollapsedWindowSize = new(524, 363);
+  private readonly Size ExpandedWindowSize = new(524, 469);
 
   public MainForm()
   {
@@ -64,27 +64,13 @@ public class MainForm : Form
     out string shortName,
     out string displayName)
   {
-    executablePath = string.Empty;
-    backupExecutablePath = string.Empty;
-    shortName = string.Empty;
-    displayName = string.Empty;
-    switch (this.Box_GameSelect.SelectedIndex)
+    (bool success, executablePath, backupExecutablePath, shortName, displayName) = this.Box_GameSelect.SelectedIndex switch
     {
-      case 0:
-        executablePath = this.SKEVEXEID;
-        backupExecutablePath = this.SKEVEXEID + this.ext;
-        shortName = "EV";
-        displayName = "SENRAN KAGURA Estival Versus";
-        return true;
-      case 1:
-        executablePath = this.SKBRNEXEID;
-        backupExecutablePath = this.SKBRNEXEID + this.ext;
-        shortName = "BrN";
-        displayName = "SENRAN KAGURA Burst Re:Newal";
-        return true;
-      default:
-        return false;
-    }
+      0 => (true, this.SKEVEXEID, this.SKEVEXEID + this.ext, "EV", "SENRAN KAGURA Estival Versus"),
+      1 => (true, this.SKBRNEXEID, this.SKBRNEXEID + this.ext, "BrN", "SENRAN KAGURA Burst Re:Newal"),
+      _ => (false, string.Empty, string.Empty, string.Empty, string.Empty)
+    };
+    return success;
   }
 
   private bool ConfirmAction(string title, string message)
@@ -237,35 +223,17 @@ public class MainForm : Form
 
   private static int Retrieve_Aspect_Int(int i)
   {
-    int num;
-    switch (i)
+    return i switch
     {
-      case 0:
-        num = 1070386381;
-        break;
-      case 1:
-        num = 1070945621;
-        break;
-      case 2:
-        num = 1071874873;
-        break;
-      case 3:
-        num = 1075295270;
-        break;
-      case 4:
-        num = 1075372942;
-        break;
-      case 5:
-        num = 1075419546;
-        break;
-      case 6:
-        num = 1080266297;
-        break;
-      default:
-        num = 1070386381;
-        break;
-    }
-    return num;
+      0 => 1070386381,
+      1 => 1070945621,
+      2 => 1071874873,
+      3 => 1075295270,
+      4 => 1075372942,
+      5 => 1075419546,
+      6 => 1080266297,
+      _ => 1070386381
+    };
   }
 
   private void RestoreBackupDirectoryFiles(string backupDirectory, string destinationDirectory)
@@ -292,36 +260,56 @@ public class MainForm : Form
 
   private void Revert_Aspect_Ratios(string path, string n)
   {
+    bool missingBackups = false;
     if (!File.Exists(path))
     {
-      this.Update_Text_Interface($"Unable to find backup .exe file for {n}.");
-      return;
+      this.Append_Log($"Unable to find backup .exe file for {n}.");
+      missingBackups = true;
     }
-    string destinationExePath = path.Substring(0, path.Length - this.ext.Length);
-    this.Append_Log($"Restoring executable: {path} -> {destinationExePath}");
-    File.Copy(path, destinationExePath, true);
+    else
+    {
+      string destinationExePath = path[..^this.ext.Length];
+      this.Append_Log($"Restoring executable: {path} -> {destinationExePath}");
+      File.Copy(path, destinationExePath, true);
+    }
     if (this.Box_GameSelect.SelectedIndex == 0)
     {
       string beachBackupDirectory = ".\\GameData\\Motion\\Beach\\Backup";
       if (Directory.Exists(beachBackupDirectory))
         this.RestoreBackupDirectoryFiles(beachBackupDirectory, ".\\GameData\\Motion\\Beach");
+      else
+      {
+        this.Append_Log($"Unable to find backup directory files for {n}: {beachBackupDirectory}");
+        missingBackups = true;
+      }
     }
     else if (this.Box_GameSelect.SelectedIndex == 1)
     {
       string uiBackupDirectory = ".\\GameData\\Ui\\Backup";
       if (Directory.Exists(uiBackupDirectory))
         this.RestoreBackupDirectoryFiles(uiBackupDirectory, ".\\GameData\\Ui");
+      else
+      {
+        this.Append_Log($"Unable to find backup directory files for {n}: {uiBackupDirectory}");
+        missingBackups = true;
+      }
     }
     string playerBackupDirectory = ".\\GameData\\Motion\\Player\\Backup";
-    if (!Directory.Exists(playerBackupDirectory))
+    if (Directory.Exists(playerBackupDirectory))
+      this.RestoreBackupDirectoryFiles(playerBackupDirectory, ".\\GameData\\Motion\\Player");
+    else
     {
-      this.Update_Text_Interface($"Unable to find backup directory files for {n}.");
-      return;
+      this.Append_Log($"Unable to find backup directory files for {n}: {playerBackupDirectory}");
+      missingBackups = true;
     }
-    this.RestoreBackupDirectoryFiles(playerBackupDirectory, ".\\GameData\\Motion\\Player");
     if (this.Check_DeleteBackupsOnRevert.Checked)
-      this.DeleteBackupFilesAfterRevert(path);
-    this.Update_Text_Interface($"Files for {n} have been reverted.");
+    {
+      if (!missingBackups)
+        this.DeleteBackupFilesAfterRevert(path);
+      else
+        this.Append_Log("Skipping backup deletion because one or more backup locations were missing.");
+    }
+    this.Update_Text_Interface(missingBackups ? $"Files for {n} were reverted with warnings." : $"Files for {n} have been reverted.");
   }
 
   private void DeleteBackupFilesAfterRevert(string backupExecutablePath)
@@ -379,17 +367,15 @@ public class MainForm : Form
 
   private void Patch_SKEV_Application(int ratio)
   {
-    int[] numArray = new int[3]{ 2366806, 5721776, 6086588 };
+    int[] numArray = [2366806, 5721776, 6086588];
     if (!File.Exists(this.SKEVEXEID + this.ext))
       File.Copy(this.SKEVEXEID, this.SKEVEXEID + this.ext);
-    using (FileStream fileStream = new FileStream(this.SKEVEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-    using (BinaryWriter binaryWriter = new BinaryWriter((Stream) fileStream))
+    using FileStream fileStream = new(this.SKEVEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    using BinaryWriter binaryWriter = new((Stream) fileStream);
+    for (int index = 0; index < numArray.Length; ++index)
     {
-      for (int index = 0; index < numArray.Length; ++index)
-      {
-        binaryWriter.BaseStream.Position = (long) numArray[index];
-        binaryWriter.Write(ratio);
-      }
+      binaryWriter.BaseStream.Position = (long) numArray[index];
+      binaryWriter.Write(ratio);
     }
   }
 
@@ -409,46 +395,44 @@ public class MainForm : Form
   {
     this.EnsureBackupFile(filePath, backupDirectory);
     this.Append_Log($"Patching file: {filePath}");
-    HashSet<int> tokenSet = new HashSet<int>(tokens);
-    List<long> patchPositions = new List<long>();
+    HashSet<int> tokenSet = [.. tokens];
+    List<long> patchPositions = [];
     const int tokenSize = 4;
     int overlapSize = tokenSize - 1;
     byte[] scanBuffer = new byte[PatchReadBufferSize + overlapSize];
-    using (FileStream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-    using (BinaryWriter binaryWriter = new BinaryWriter((Stream) fileStream))
+    using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    using BinaryWriter binaryWriter = new((Stream) fileStream);
+    long scanBaseOffset = 0L;
+    int carryBytes = 0;
+    fileStream.Position = 0L;
+    while (true)
     {
-      long scanBaseOffset = 0L;
-      int carryBytes = 0;
-      fileStream.Position = 0L;
-      while (true)
+      int bytesRead = fileStream.Read(scanBuffer, carryBytes, PatchReadBufferSize);
+      if (bytesRead <= 0)
+        break;
+      int totalBytes = carryBytes + bytesRead;
+      int scanLimit = totalBytes - overlapSize;
+      for (int i = 0; i < scanLimit; ++i)
       {
-        int bytesRead = fileStream.Read(scanBuffer, carryBytes, PatchReadBufferSize);
-        if (bytesRead <= 0)
-          break;
-        int totalBytes = carryBytes + bytesRead;
-        int scanLimit = totalBytes - overlapSize;
-        for (int i = 0; i < scanLimit; ++i)
-        {
-          int currentValue = BitConverter.ToInt32(scanBuffer, i);
-          if (tokenSet.Contains(currentValue))
-            patchPositions.Add(scanBaseOffset + i);
-        }
-        carryBytes = Math.Min(overlapSize, totalBytes);
-        if (carryBytes > 0)
-          Buffer.BlockCopy(scanBuffer, totalBytes - carryBytes, scanBuffer, 0, carryBytes);
-        scanBaseOffset += totalBytes - carryBytes;
+        int currentValue = BitConverter.ToInt32(scanBuffer, i);
+        if (tokenSet.Contains(currentValue))
+          patchPositions.Add(scanBaseOffset + i);
       }
-      for (int index = 0; index < patchPositions.Count; ++index)
-      {
-        binaryWriter.BaseStream.Position = patchPositions[index];
-        binaryWriter.Write(replacementValue);
-      }
+      carryBytes = Math.Min(overlapSize, totalBytes);
+      if (carryBytes > 0)
+        Buffer.BlockCopy(scanBuffer, totalBytes - carryBytes, scanBuffer, 0, carryBytes);
+      scanBaseOffset += totalBytes - carryBytes;
+    }
+    for (int index = 0; index < patchPositions.Count; ++index)
+    {
+      binaryWriter.BaseStream.Position = patchPositions[index];
+      binaryWriter.Write(replacementValue);
     }
   }
 
-  private Task PatchFilesAsync(string[] files, Action<string> patchAction)
+  private static Task PatchFilesAsync(string[] files, Action<string> patchAction)
   {
-    return Task.Run((Action) (() => Parallel.ForEach<string>(files, new ParallelOptions()
+    return Task.Run((Action) (() => Parallel.ForEach<string>(files, new ParallelOptions
     {
       MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount)
     }, patchAction)));
@@ -461,7 +445,7 @@ public class MainForm : Form
     if (!Directory.Exists(backupBeachDirectory))
       Directory.CreateDirectory(backupBeachDirectory);
     string[] files = Directory.GetFiles(sourceBeachDirectory, "*.cat");
-    await this.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupBeachDirectory, ratio, AspectTokenA));
+    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupBeachDirectory, ratio, AspectTokenA));
   }
 
   private async Task Patch_SKEV_Creative_Finishes(int ratio)
@@ -471,7 +455,7 @@ public class MainForm : Form
     if (!Directory.Exists(backupFinishDirectory))
       Directory.CreateDirectory(backupFinishDirectory);
     string[] files = Directory.GetFiles(sourceFinishDirectory, "*.cat");
-    await this.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupFinishDirectory, ratio, AspectTokenA, AspectTokenB));
+    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupFinishDirectory, ratio, AspectTokenA, AspectTokenB));
   }
 
   private async Task Patch_Senran_Kagura_Burst_ReNewal_Async(int ratio)
@@ -489,23 +473,21 @@ public class MainForm : Form
 
   private void Patch_SKBRN_Application(int ratio)
   {
-    int[] numArray = new int[4]
-    {
+    int[] numArray =
+    [
       2637606,
       6980488,
       6991120,
       7471796
-    };
+    ];
     if (!File.Exists(this.SKBRNEXEID + this.ext))
       File.Copy(this.SKBRNEXEID, this.SKBRNEXEID + this.ext);
-    using (FileStream fileStream = new FileStream(this.SKBRNEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-    using (BinaryWriter binaryWriter = new BinaryWriter((Stream) fileStream))
+    using FileStream fileStream = new(this.SKBRNEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    using BinaryWriter binaryWriter = new((Stream) fileStream);
+    for (int index = 0; index < numArray.Length; ++index)
     {
-      for (int index = 0; index < numArray.Length; ++index)
-      {
-        binaryWriter.BaseStream.Position = (long) numArray[index];
-        binaryWriter.Write(ratio);
-      }
+      binaryWriter.BaseStream.Position = (long) numArray[index];
+      binaryWriter.Write(ratio);
     }
   }
 
@@ -516,7 +498,7 @@ public class MainForm : Form
     if (!Directory.Exists(backupRoomDirectory))
       Directory.CreateDirectory(backupRoomDirectory);
     string[] files = Directory.GetFiles(sourceRoomDirectory, "*data.cat");
-    await this.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupRoomDirectory, ratio, AspectTokenB));
+    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupRoomDirectory, ratio, AspectTokenB));
   }
 
   private async Task Patch_Character_Files(int ratio)
@@ -526,7 +508,7 @@ public class MainForm : Form
     if (!Directory.Exists(backupDirectory))
       Directory.CreateDirectory(backupDirectory);
     string[] files = Directory.GetFiles(sourceDirectory, "*cam.cat");
-    await this.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupDirectory, ratio, AspectTokenA, AspectTokenB));
+    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupDirectory, ratio, AspectTokenA, AspectTokenB));
   }
 
   private void Append_Log(string s)
@@ -535,7 +517,7 @@ public class MainForm : Form
       return;
     if (this.Box_Log.InvokeRequired)
     {
-      this.Box_Log.BeginInvoke((Delegate) new Action<string>(this.Append_Log), (object) s);
+      this.Box_Log.BeginInvoke((Delegate) new Action<string>(this.Append_Log), s);
       return;
     }
     this.Box_Log.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
@@ -564,7 +546,7 @@ public class MainForm : Form
 
   private void InitializeComponent()
   {
-    ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof (MainForm));
+    ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof(MainForm));
     this.Box_GameSelect = new ComboBox();
     this.Box_AspectRatio = new ComboBox();
     this.Button_Revert = new Button();
@@ -588,7 +570,7 @@ public class MainForm : Form
     this.Box_GameSelect.Size = new Size(500, 23);
     this.Box_GameSelect.TabIndex = 0;
     this.Box_GameSelect.Text = "Game Select";
-    this.Box_GameSelect.SelectedIndexChanged += new EventHandler(this.Box_GameSelect_SelectedIndexChanged);
+    this.Box_GameSelect.SelectedIndexChanged += this.Box_GameSelect_SelectedIndexChanged;
     this.Box_AspectRatio.Enabled = false;
     this.Box_AspectRatio.FormattingEnabled = true;
     this.Box_AspectRatio.Items.AddRange(new object[7]
@@ -606,7 +588,7 @@ public class MainForm : Form
     this.Box_AspectRatio.Size = new Size(171, 23);
     this.Box_AspectRatio.TabIndex = 1;
     this.Box_AspectRatio.Text = "Aspect Ratio";
-    this.Box_AspectRatio.SelectedIndexChanged += new EventHandler(this.Box_AspectRatio_SelectedIndexChanged);
+    this.Box_AspectRatio.SelectedIndexChanged += this.Box_AspectRatio_SelectedIndexChanged;
     this.Button_Revert.Enabled = false;
     this.Button_Revert.Location = new Point(12, 285);
     this.Button_Revert.Name = "Button_Revert";
@@ -614,7 +596,7 @@ public class MainForm : Form
     this.Button_Revert.TabIndex = 2;
     this.Button_Revert.Text = "Revert";
     this.Button_Revert.UseVisualStyleBackColor = true;
-    this.Button_Revert.Click += new EventHandler(this.Button_Revert_Click);
+    this.Button_Revert.Click += this.Button_Revert_Click;
     this.Button_Apply.Enabled = false;
     this.Button_Apply.Location = new Point(189, 285);
     this.Button_Apply.Name = "Button_Apply";
@@ -622,7 +604,7 @@ public class MainForm : Form
     this.Button_Apply.TabIndex = 3;
     this.Button_Apply.Text = "Apply";
     this.Button_Apply.UseVisualStyleBackColor = true;
-    this.Button_Apply.Click += new EventHandler(this.Button_Apply_Click);
+    this.Button_Apply.Click += this.Button_Apply_Click;
     this.Box_Image.Image = (Image) SenranKaguraAspectMOD.Properties.Resources._4827930348255969816;
     this.Box_Image.Location = new Point(12, 12);
     this.Box_Image.Name = "Box_Image";
@@ -657,7 +639,7 @@ public class MainForm : Form
     this.Button_ToggleLog.TabIndex = 9;
     this.Button_ToggleLog.Text = "Show Log";
     this.Button_ToggleLog.UseVisualStyleBackColor = true;
-    this.Button_ToggleLog.Click += new EventHandler(this.Button_ToggleLog_Click);
+    this.Button_ToggleLog.Click += this.Button_ToggleLog_Click;
     this.Box_Log.Location = new Point(12, 356);
     this.Box_Log.Multiline = true;
     this.Box_Log.Name = "Box_Log";
@@ -671,16 +653,19 @@ public class MainForm : Form
     this.AutoScaleMode = AutoScaleMode.Font;
     this.BackgroundImageLayout = ImageLayout.None;
     this.ClientSize = new Size(524, 363);
-    this.Controls.Add((Control) this.Button_ToggleLog);
-    this.Controls.Add((Control) this.Box_Log);
-    this.Controls.Add((Control) this.Check_DeleteBackupsOnRevert);
-    this.Controls.Add((Control) this.Text_Output);
-    this.Controls.Add((Control) this.Text_Instructions);
-    this.Controls.Add((Control) this.Box_Image);
-    this.Controls.Add((Control) this.Button_Apply);
-    this.Controls.Add((Control) this.Button_Revert);
-    this.Controls.Add((Control) this.Box_AspectRatio);
-    this.Controls.Add((Control) this.Box_GameSelect);
+    this.Controls.AddRange(new Control[10]
+    {
+      this.Button_ToggleLog,
+      this.Box_Log,
+      this.Check_DeleteBackupsOnRevert,
+      this.Text_Output,
+      this.Text_Instructions,
+      this.Box_Image,
+      this.Button_Apply,
+      this.Button_Revert,
+      this.Box_AspectRatio,
+      this.Box_GameSelect
+    });
     this.FormBorderStyle = FormBorderStyle.FixedSingle;
     this.Name = "MainForm";
     this.Text = "Senran Kagura EV-BrN Aspect Ratio MOD Tool - Version 1.2";
