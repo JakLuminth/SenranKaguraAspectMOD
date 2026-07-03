@@ -17,17 +17,17 @@ public class MainForm : Form
   private const int AspectTokenA = 1071877689;
   private const int AspectTokenB = 1071768034;
   private const int PatchReadBufferSize = 262144;
-  private IContainer components = null;
-  private ComboBox Box_GameSelect = null;
-  private ComboBox Box_AspectRatio = null;
-  private Button Button_Revert = null;
-  private Button Button_Apply = null;
-  private PictureBox Box_Image = null;
-  private Label Text_Instructions = null;
-  private Label Text_Output = null;
-  private TextBox Box_Log = null;
-  private CheckBox Check_DeleteBackupsOnRevert = null;
-  private Button Button_ToggleLog = null;
+  private IContainer components = null!;
+  private ComboBox Box_GameSelect = null!;
+  private ComboBox Box_AspectRatio = null!;
+  private Button Button_Revert = null!;
+  private Button Button_Apply = null!;
+  private PictureBox Box_Image = null!;
+  private Label Text_Instructions = null!;
+  private Label Text_Output = null!;
+  private TextBox Box_Log = null!;
+  private CheckBox Check_DeleteBackupsOnRevert = null!;
+  private Button Button_ToggleLog = null!;
   private readonly Size CollapsedWindowSize = new Size(524, 363);
   private readonly Size ExpandedWindowSize = new Size(524, 469);
 
@@ -155,7 +155,7 @@ public class MainForm : Form
     return true;
   }
 
-  private void Box_GameSelect_SelectedIndexChanged(object sender, EventArgs e)
+  private void Box_GameSelect_SelectedIndexChanged(object? sender, EventArgs e)
   {
     this.ValidationCheck();
     if (this.Box_GameSelect.SelectedItem != null && !string.IsNullOrEmpty(this.Box_GameSelect.SelectedItem.ToString()))
@@ -170,12 +170,12 @@ public class MainForm : Form
     }
   }
 
-  private void Box_AspectRatio_SelectedIndexChanged(object sender, EventArgs e)
+  private void Box_AspectRatio_SelectedIndexChanged(object? sender, EventArgs e)
   {
     this.ValidationCheck();
   }
 
-  private void Button_Revert_Click(object sender, EventArgs e)
+  private void Button_Revert_Click(object? sender, EventArgs e)
   {
     if (!this.ValidateRevertPreconditions(out string path, out string n, out string displayName, out string errorMessage))
     {
@@ -204,7 +204,7 @@ public class MainForm : Form
     }
   }
 
-  private async void Button_Apply_Click(object sender, EventArgs e)
+  private async void Button_Apply_Click(object? sender, EventArgs e)
   {
     if (!this.ValidateApplyPreconditions(out string errorMessage))
     {
@@ -541,7 +541,7 @@ public class MainForm : Form
     this.Box_Log.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
   }
 
-  private void Button_ToggleLog_Click(object sender, EventArgs e)
+  private void Button_ToggleLog_Click(object? sender, EventArgs e)
   {
     bool showLog = !this.Box_Log.Visible;
     this.Box_Log.Visible = showLog;
@@ -682,7 +682,7 @@ public class MainForm : Form
     this.Controls.Add((Control) this.Box_AspectRatio);
     this.Controls.Add((Control) this.Box_GameSelect);
     this.FormBorderStyle = FormBorderStyle.FixedSingle;
-    this.Name = nameof (MainForm);
+    this.Name = "MainForm";
     this.Text = "Senran Kagura EV-BrN Aspect Ratio MOD Tool - Version 1.2";
     ((ISupportInitialize) this.Box_Image).EndInit();
     this.ResumeLayout(false);
