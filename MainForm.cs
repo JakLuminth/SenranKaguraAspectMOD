@@ -287,13 +287,13 @@ public class MainForm : Form
   /// Maps an aspect ratio selection index to its corresponding binary replacement value (IEEE 754 single-precision float representation).
   /// </summary>
   /// <param name="i">The aspect ratio index from the UI ComboBox selection:
-  /// 0 = 1.33:1 (4:3 standard)
-  /// 1 = 1.60:1 (16:10)
+  /// 0 = 1.60:1 (16:10)
+  /// 1 = 1.67:1 (15:9)
   /// 2 = 1.78:1 (16:9)
-  /// 3 = 2.14:1 (ultra-wide)
-  /// 4 = 2.35:1 (cinema)
-  /// 5 = 2.40:1 (DCI cinema)
-  /// 6 = 2.76:1 (IMAX)
+  /// 3 = 2.37:1 (21:9, 2560 by 1080)
+  /// 4 = 2.39:1 (21:9, 3440 by 1440)
+  /// 5 = 2.40:1 (21:9, 3840 by 1600)
+  /// 6 = 3.56:1 (32:9)
   /// </param>
   /// <returns>The IEEE 754 encoded single-precision float value used in binary patches for the selected aspect ratio.</returns>
   private static int RetrieveAspectInt(int i)
@@ -654,6 +654,11 @@ public class MainForm : Form
   {
     if (this.Text_Output == null || this.Text_Output.IsDisposed)
       return;
+    if (this.Text_Output.InvokeRequired)
+    {
+      this.Text_Output.BeginInvoke((Delegate) new Action<string>(this.UpdateTextInterface), s);
+      return;
+    }
     this.Text_Output.Text = s;
     this.AppendLog(s);
   }
