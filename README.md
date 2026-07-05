@@ -72,3 +72,4 @@ Thanks to Loggey for the original offsets, process, and tool concept.
 - This tool edits local game files only.
 - Use at your own risk.
 - Keep your own independent backups if needed.
+- AI used for the generation of code.
