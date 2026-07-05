@@ -1,11 +1,16 @@
-# Senran Kagura EV/BrN Aspect Ratio MOD Tool (v1.2)
+# Senran Kagura Aspect Ratio MOD Tool (v2)
 
-A Windows desktop utility for applying widescreen and ultrawide aspect-ratio fixes to:
+A Windows desktop utility for applying widescreen and ultrawide aspect-ratio fixes to supported SENRAN KAGURA PC titles.
+
+## Supported Games
 
 - **SENRAN KAGURA Estival Versus (EV)**
 - **SENRAN KAGURA Burst Re:Newal (BrN)**
+- **SENRAN KAGURA Peach Beach Splash (PBS)**
+- **SENRAN KAGURA Reflexions**
+- **SENRAN KAGURA Peach Ball (PB)**
 
-This tool automates hex edits that would otherwise be done manually across multiple game files.
+> Note: Patching support for **PBS**, **Reflexions**, and **Peach Ball** is currently fairly basic. Additional issue fixes and broader patch coverage are being investigated.
 
 ## Download
 
@@ -13,66 +18,46 @@ This tool automates hex edits that would otherwise be done manually across multi
 
 ## Quick Start
 
-1. Put the tool executable in the **root folder of the target game**.
+1. Place the tool executable in the **root folder of a supported game**.
 2. Launch the tool.
-3. Select game (auto-detected when possible).
+3. Select a game (auto-selected when exactly one supported executable is detected).
 4. Select an aspect ratio preset.
 5. Click **Apply** and confirm.
-6. Wait for completion and review the log panel.
+6. Wait for completion.
+7. (Optional) Use **Show Log** to review detailed patch output.
 
 ## Features
 
-- Game selection for EV/BrN
-- Auto-game detection when only one supported executable is found
-- Aspect ratio presets including:
-  - 15:9
+- Multi-game support with a single UI
+- Auto-detection when exactly one supported game executable exists in the folder
+- Aspect ratio presets:
   - 16:10
+  - 15:9
   - 16:9
-  - Multiple 21:9 variants
+  - 21:9 (2560 by 1080)
+  - 21:9 (3440 by 1440)
+  - 21:9 (3840 by 1600)
   - 32:9
-- Applies patch data to:
-  - Game executable offsets
-  - Character camera files
-  - EV beach/menu and creative-finish related files
-  - BrN room/menu related files
-- Automatic backup creation (first patch)
-- One-click revert from backup
-- Timestamped in-app logging (Show Log / Hide Log)
+- Patches executable offsets for the selected game
+- Patches additional binary data files based on game layout:
+  - Character camera files (`GameData\\Motion\\Player\\*cam.cat`)
+  - EV beach files (`GameData\\Motion\\Beach\\*.cat`)
+  - EV creative finish files (`GameData\\Placement\\plbg\\*.cat`)
+  - BrN UI files (`GameData\\Ui\\*data.cat`, including subfolders)
+- Fast binary scanning and parallel file patching for data-file operations
+- Timestamped in-app logging with expandable/collapsible log panel
+- One-click revert using created backups
 
-## Backup and Safety
+## Backup and Revert Behavior
 
-Before any write operation, backups are created in the game folder and related subfolders. Revert restores from those backups.
+- The first time a file is patched, a backup is created and preserved for reuse.
+- Executable backups are created as `*.backup` beside the game executable.
+- Data-file backups are stored under a `Backup` subfolder in each patched data directory.
+- Revert restores the executable and any available backed-up data files for the selected game.
 
-By default, **Delete backups automatically** is enabled. After a successful revert, backup files/folders are removed unless this option is disabled first.
+By default, **Delete backups automatically** is enabled. After a successful revert, backup files/folders are removed unless that option is disabled first.
 
-> Important: Revert first before applying a different ratio. Stacking applies may leave mixed values.
-
-## Revert Changes
-
-1. Select the game.
-2. (Optional) Uncheck **Delete backups automatically** if you want to keep backup files after revert.
-3. Click **Revert** and confirm.
-
-## Logging
-
-The bottom panel records timestamped status and file-operation details, such as:
-
-- Which executable is patched/restored
-- Which backup files are copied during revert
-- File group counts processed during apply
-
-## Requirements
-
-- Windows
-- Correct game directory layout
-- Write permission for game files/folders
-
-## Troubleshooting
-
-- **Tool does not detect game:** Verify the executable is in the expected game root directory.
-- **Apply/Revert fails:** Run as administrator if file permissions are restricted.
-- **Ratio did not fully change:** Revert first, then apply the desired ratio again.
-- **Missing backup files:** If backups were auto-deleted after revert, re-run apply to regenerate backups.
+> Important: Revert before applying a different ratio. Applying multiple ratios in sequence without revert can leave mixed values.
 
 ## Credits
 
@@ -86,4 +71,4 @@ Thanks to Loggey for the original offsets, process, and tool concept.
 
 - This tool edits local game files only.
 - Use at your own risk.
-- Keep your own independent backups if desired.
+- Keep your own independent backups if needed.

@@ -1,22 +1,80 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Resources;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace SenranKaguraAspectMOD;
 
+internal record GameConfig(
+  string ExecutablePath,
+  string ShortName,
+  string DisplayName,
+  int[] ExecutableOffsets,
+  string[] RequiredDataDirectories
+);
+
 public class MainForm : Form
 {
-  private readonly string SKEVEXEID = ".\\SKEstivalVersus.exe";
-  private readonly string SKBRNEXEID = ".\\SKBurstReNewal.exe";
   private readonly string ext = ".backup";
   private const int AspectTokenA = 1071877689;
   private const int AspectTokenB = 1071768034;
   private const int PatchReadBufferSize = 262144;
+
+  // Game data directory constants
+  private const string GameDataMotionPlayerPath = ".\\GameData\\Motion\\Player";
+  private const string GameDataMotionBeachPath = ".\\GameData\\Motion\\Beach";
+  private const string GameDataUiPath = ".\\GameData\\Ui";
+  private const string GameDataPlacementPlbgPath = ".\\GameData\\Placement\\plbg";
+  private const string BackupDirectoryName = "Backup";
+  private const string UiFilePattern = "*data.cat";
+  private const string CharacterFilePattern = "*cam.cat";
+  private const string BeachFilePattern = "*.cat";
+  private const string FinishFilePattern = "*.cat";
+
+  private readonly GameConfig[] Games =
+  [
+    new(
+      ExecutablePath: ".\\SKEstivalVersus.exe",
+      ShortName: "EV",
+      DisplayName: "SENRAN KAGURA Estival Versus",
+      ExecutableOffsets: [2366806, 5721776, 6086588],
+      RequiredDataDirectories: [GameDataMotionPlayerPath, GameDataMotionBeachPath, GameDataPlacementPlbgPath]
+    ),
+    new(
+      ExecutablePath: ".\\SKBurstReNewal.exe",
+      ShortName: "BrN",
+      DisplayName: "SENRAN KAGURA Burst Re:Newal",
+      ExecutableOffsets: [2637606, 6980488, 6991120, 7471796],
+      RequiredDataDirectories: [GameDataMotionPlayerPath, GameDataUiPath]
+    ),
+    new(
+      ExecutablePath: ".\\SKPeachBeachSplash.exe",
+      ShortName: "PBS",
+      DisplayName: "SENRAN KAGURA Peach Beach Splash",
+      ExecutableOffsets: [3802054, 7856864],
+      RequiredDataDirectories: [GameDataMotionPlayerPath]
+    ),
+    new(
+      ExecutablePath: ".\\SKReflexions.exe",
+      ShortName: "Reflexions",
+      DisplayName: "SENRAN KAGURA Reflexions",
+      ExecutableOffsets: [1868058, 4636040],
+      RequiredDataDirectories: [GameDataMotionPlayerPath]
+    ),
+    new(
+      ExecutablePath: ".\\SKPeachBall.exe",
+      ShortName: "PB",
+      DisplayName: "SENRAN KAGURA Peach Ball",
+      ExecutableOffsets: [2515162, 4371312, 4379424],
+      RequiredDataDirectories: [GameDataMotionPlayerPath]
+    )
+  ];
+
   private IContainer components = null!;
   private ComboBox Box_GameSelect = null!;
   private ComboBox Box_AspectRatio = null!;
@@ -35,27 +93,37 @@ public class MainForm : Form
   {
     this.InitializeComponent();
     this.AutoSelectDetectedGame();
-    this.Append_Log("Ready.");
+    this.AppendLog("Ready.");
   }
 
+  /// <summary>Automatically selects a game if exactly one supported executable is detected.</summary>
   private void AutoSelectDetectedGame()
   {
-    bool hasEstivalVersus = File.Exists(this.SKEVEXEID);
-    bool hasBurstReNewal = File.Exists(this.SKBRNEXEID);
-    if (hasEstivalVersus && !hasBurstReNewal)
+    var detectedGames = this.Games
+      .Select((game, index) => (index, game))
+      .Where(g => File.Exists(g.game.ExecutablePath))
+      .ToList();
+
+    if (detectedGames.Count == 1)
     {
-      this.Box_GameSelect.SelectedIndex = 0;
-      this.Append_Log("Auto-selected SENRAN KAGURA Estival Versus based on detected executable.");
+      this.Box_GameSelect.SelectedIndex = detectedGames[0].index;
+      this.AppendLog($"Auto-selected {detectedGames[0].game.DisplayName} based on detected executable.");
     }
-    else if (!hasEstivalVersus && hasBurstReNewal)
-    {
-      this.Box_GameSelect.SelectedIndex = 1;
-      this.Append_Log("Auto-selected SENRAN KAGURA Burst Re:Newal based on detected executable.");
-    }
-    else if (hasEstivalVersus && hasBurstReNewal)
-      this.Append_Log("Both supported executables were detected. Select the game manually.");
+    else if (detectedGames.Count > 1)
+      this.AppendLog("Multiple supported executables were detected. Select the game manually.");
     else
-      this.Append_Log("No supported executable was detected. Select the game manually.");
+      this.AppendLog("No supported executable was detected. Select the game manually.");
+  }
+
+  private GameConfig? TryGetGameConfig(out string errorMessage)
+  {
+    errorMessage = string.Empty;
+    if (this.Box_GameSelect.SelectedIndex < 0 || this.Box_GameSelect.SelectedIndex >= this.Games.Length)
+    {
+      errorMessage = "Select a game before applying changes.";
+      return null;
+    }
+    return this.Games[this.Box_GameSelect.SelectedIndex];
   }
 
   private bool TryGetGameInfo(
@@ -64,13 +132,20 @@ public class MainForm : Form
     out string shortName,
     out string displayName)
   {
-    (bool success, executablePath, backupExecutablePath, shortName, displayName) = this.Box_GameSelect.SelectedIndex switch
+    var game = this.TryGetGameConfig(out _);
+    if (game == null)
     {
-      0 => (true, this.SKEVEXEID, this.SKEVEXEID + this.ext, "EV", "SENRAN KAGURA Estival Versus"),
-      1 => (true, this.SKBRNEXEID, this.SKBRNEXEID + this.ext, "BrN", "SENRAN KAGURA Burst Re:Newal"),
-      _ => (false, string.Empty, string.Empty, string.Empty, string.Empty)
-    };
-    return success;
+      executablePath = string.Empty;
+      backupExecutablePath = string.Empty;
+      shortName = string.Empty;
+      displayName = string.Empty;
+      return false;
+    }
+    executablePath = game.ExecutablePath;
+    backupExecutablePath = game.ExecutablePath + this.ext;
+    shortName = game.ShortName;
+    displayName = game.DisplayName;
+    return true;
   }
 
   private bool ConfirmAction(string title, string message)
@@ -81,44 +156,31 @@ public class MainForm : Form
   private bool ValidateApplyPreconditions(out string errorMessage)
   {
     errorMessage = string.Empty;
-    if (!this.TryGetGameInfo(out string executablePath, out string _, out string _, out string _))
-    {
-      errorMessage = "Select a game before applying changes.";
+    var game = this.TryGetGameConfig(out errorMessage);
+    if (game == null)
       return false;
-    }
+
     if (this.Box_AspectRatio.SelectedIndex < 0)
     {
       errorMessage = "Select an aspect ratio before applying changes.";
       return false;
     }
-    if (!File.Exists(executablePath))
+
+    if (!File.Exists(game.ExecutablePath))
     {
-      errorMessage = $"Unable to find executable: {executablePath}";
+      errorMessage = $"Unable to find executable: {game.ExecutablePath}";
       return false;
     }
-    if (!Directory.Exists(".\\GameData\\Motion\\Player"))
+
+    foreach (string dir in game.RequiredDataDirectories)
     {
-      errorMessage = "Required directory not found: .\\GameData\\Motion\\Player";
-      return false;
-    }
-    if (this.Box_GameSelect.SelectedIndex == 0)
-    {
-      if (!Directory.Exists(".\\GameData\\Motion\\Beach"))
+      if (!Directory.Exists(dir))
       {
-        errorMessage = "Required directory not found: .\\GameData\\Motion\\Beach";
-        return false;
-      }
-      if (!Directory.Exists(".\\GameData\\Placement\\plbg"))
-      {
-        errorMessage = "Required directory not found: .\\GameData\\Placement\\plbg";
+        errorMessage = $"Required directory not found: {dir}";
         return false;
       }
     }
-    else if (this.Box_GameSelect.SelectedIndex == 1 && !Directory.Exists(".\\GameData\\Ui"))
-    {
-      errorMessage = "Required directory not found: .\\GameData\\Ui";
-      return false;
-    }
+
     return true;
   }
 
@@ -141,7 +203,7 @@ public class MainForm : Form
     return true;
   }
 
-  private void Box_GameSelect_SelectedIndexChanged(object? sender, EventArgs e)
+  private void BoxGameSelectSelectedIndexChanged(object? sender, EventArgs e)
   {
     this.ValidationCheck();
     if (this.Box_GameSelect.SelectedItem != null && !string.IsNullOrEmpty(this.Box_GameSelect.SelectedItem.ToString()))
@@ -156,33 +218,33 @@ public class MainForm : Form
     }
   }
 
-  private void Box_AspectRatio_SelectedIndexChanged(object? sender, EventArgs e)
+  private void BoxAspectRatioSelectedIndexChanged(object? sender, EventArgs e)
   {
     this.ValidationCheck();
   }
 
-  private void Button_Revert_Click(object? sender, EventArgs e)
+  private void ButtonRevertClick(object? sender, EventArgs e)
   {
     if (!this.ValidateRevertPreconditions(out string path, out string n, out string displayName, out string errorMessage))
     {
-      this.Update_Text_Interface(errorMessage);
+      this.UpdateTextInterface(errorMessage);
       return;
     }
     if (!this.ConfirmAction("Confirm Revert", $"Revert aspect-ratio changes for {displayName}?"))
     {
-      this.Update_Text_Interface("Revert cancelled.");
+      this.UpdateTextInterface("Revert cancelled.");
       return;
     }
     this.Button_Apply.Enabled = false;
     this.Button_Revert.Enabled = false;
     try
     {
-      this.Update_Text_Interface("...Reverting");
-      this.Revert_Aspect_Ratios(path, n);
+      this.UpdateTextInterface("...Reverting");
+      this.RevertAspectRatios(path, n);
     }
     catch (Exception ex)
     {
-      this.Update_Text_Interface($"Revert failed: {ex.Message}");
+      this.UpdateTextInterface($"Revert failed: {ex.Message}");
     }
     finally
     {
@@ -190,30 +252,30 @@ public class MainForm : Form
     }
   }
 
-  private async void Button_Apply_Click(object? sender, EventArgs e)
+  private async void ButtonApplyClick(object? sender, EventArgs e)
   {
     if (!this.ValidateApplyPreconditions(out string errorMessage))
     {
-      this.Update_Text_Interface(errorMessage);
+      this.UpdateTextInterface(errorMessage);
       return;
     }
     if (!this.TryGetGameInfo(out string _, out string _, out string _, out string displayName))
       return;
     if (!this.ConfirmAction("Confirm Apply", $"Apply aspect-ratio changes to {displayName}?"))
     {
-      this.Update_Text_Interface("Apply cancelled.");
+      this.UpdateTextInterface("Apply cancelled.");
       return;
     }
     this.Button_Apply.Enabled = false;
     this.Button_Revert.Enabled = false;
     try
     {
-      this.Update_Text_Interface("...Working");
-      await this.Update_Aspect_Ratios(MainForm.Retrieve_Aspect_Int(this.Box_AspectRatio.SelectedIndex));
+      this.UpdateTextInterface("...Working");
+      await this.UpdateAspectRatios(MainForm.RetrieveAspectInt(this.Box_AspectRatio.SelectedIndex));
     }
     catch (Exception ex)
     {
-      this.Update_Text_Interface($"Apply failed: {ex.Message}");
+      this.UpdateTextInterface($"Apply failed: {ex.Message}");
     }
     finally
     {
@@ -221,7 +283,20 @@ public class MainForm : Form
     }
   }
 
-  private static int Retrieve_Aspect_Int(int i)
+  /// <summary>
+  /// Maps an aspect ratio selection index to its corresponding binary replacement value (IEEE 754 single-precision float representation).
+  /// </summary>
+  /// <param name="i">The aspect ratio index from the UI ComboBox selection:
+  /// 0 = 1.33:1 (4:3 standard)
+  /// 1 = 1.60:1 (16:10)
+  /// 2 = 1.78:1 (16:9)
+  /// 3 = 2.14:1 (ultra-wide)
+  /// 4 = 2.35:1 (cinema)
+  /// 5 = 2.40:1 (DCI cinema)
+  /// 6 = 2.76:1 (IMAX)
+  /// </param>
+  /// <returns>The IEEE 754 encoded single-precision float value used in binary patches for the selected aspect ratio.</returns>
+  private static int RetrieveAspectInt(int i)
   {
     return i switch
     {
@@ -240,10 +315,14 @@ public class MainForm : Form
   {
     if (!Directory.Exists(destinationDirectory))
       Directory.CreateDirectory(destinationDirectory);
-    foreach (string backupFile in Directory.GetFiles(backupDirectory))
+    foreach (string backupFile in Directory.GetFiles(backupDirectory, "*", SearchOption.AllDirectories))
     {
-      string destinationFile = Path.Combine(destinationDirectory, Path.GetFileName(backupFile));
-      this.Append_Log($"Restoring file: {backupFile} -> {destinationFile}");
+      string relativeBackupPath = Path.GetRelativePath(backupDirectory, backupFile);
+      string destinationFile = Path.Combine(destinationDirectory, relativeBackupPath);
+      string? destinationFileDirectory = Path.GetDirectoryName(destinationFile);
+      if (!string.IsNullOrEmpty(destinationFileDirectory) && !Directory.Exists(destinationFileDirectory))
+        Directory.CreateDirectory(destinationFileDirectory);
+      this.AppendLog($"Restoring file: {backupFile} -> {destinationFile}");
       File.Copy(backupFile, destinationFile, true);
     }
   }
@@ -253,79 +332,84 @@ public class MainForm : Form
     if (!Directory.Exists(directoryPath))
       return;
     foreach (string filePath in Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories))
-      this.Append_Log($"Deleting backup file: {filePath}");
-    this.Append_Log($"Deleting backup directory: {directoryPath}");
+      this.AppendLog($"Deleting backup file: {filePath}");
+    this.AppendLog($"Deleting backup directory: {directoryPath}");
     Directory.Delete(directoryPath, true);
   }
 
-  private void Revert_Aspect_Ratios(string path, string n)
+  /// <summary>Reverts aspect ratio changes by restoring backup files for the selected game.</summary>
+  /// <param name="path">Path to the backup executable file.</param>
+  /// <param name="n">Short name of the game (for logging purposes).</param>
+  private void RevertAspectRatios(string path, string n)
   {
-    bool missingBackups = false;
+    var game = this.TryGetGameConfig(out _);
+    if (game == null)
+      return;
+
+    var failedBackupLocations = new List<string>();
+
     if (!File.Exists(path))
     {
-      this.Append_Log($"Unable to find backup .exe file for {n}.");
-      missingBackups = true;
+      this.AppendLog($"Unable to find backup .exe file for {n}.");
+      failedBackupLocations.Add($"Executable backup: {path}");
     }
     else
     {
       string destinationExePath = path[..^this.ext.Length];
-      this.Append_Log($"Restoring executable: {path} -> {destinationExePath}");
+      this.AppendLog($"Restoring executable: {path} -> {destinationExePath}");
       File.Copy(path, destinationExePath, true);
     }
-    if (this.Box_GameSelect.SelectedIndex == 0)
+
+    foreach (string dataDir in game.RequiredDataDirectories)
     {
-      string beachBackupDirectory = ".\\GameData\\Motion\\Beach\\Backup";
-      if (Directory.Exists(beachBackupDirectory))
-        this.RestoreBackupDirectoryFiles(beachBackupDirectory, ".\\GameData\\Motion\\Beach");
+      string backupDir = Path.Combine(dataDir, BackupDirectoryName);
+      if (Directory.Exists(backupDir))
+        this.RestoreBackupDirectoryFiles(backupDir, dataDir);
       else
       {
-        this.Append_Log($"Unable to find backup directory files for {n}: {beachBackupDirectory}");
-        missingBackups = true;
+        this.AppendLog($"Unable to find backup directory files for {n}: {backupDir}");
+        failedBackupLocations.Add(backupDir);
       }
     }
-    else if (this.Box_GameSelect.SelectedIndex == 1)
-    {
-      string uiBackupDirectory = ".\\GameData\\Ui\\Backup";
-      if (Directory.Exists(uiBackupDirectory))
-        this.RestoreBackupDirectoryFiles(uiBackupDirectory, ".\\GameData\\Ui");
-      else
-      {
-        this.Append_Log($"Unable to find backup directory files for {n}: {uiBackupDirectory}");
-        missingBackups = true;
-      }
-    }
-    string playerBackupDirectory = ".\\GameData\\Motion\\Player\\Backup";
-    if (Directory.Exists(playerBackupDirectory))
-      this.RestoreBackupDirectoryFiles(playerBackupDirectory, ".\\GameData\\Motion\\Player");
-    else
-    {
-      this.Append_Log($"Unable to find backup directory files for {n}: {playerBackupDirectory}");
-      missingBackups = true;
-    }
+
     if (this.Check_DeleteBackupsOnRevert.Checked)
     {
-      if (!missingBackups)
+      if (failedBackupLocations.Count == 0)
         this.DeleteBackupFilesAfterRevert(path);
       else
-        this.Append_Log("Skipping backup deletion because one or more backup locations were missing.");
+        this.AppendLog("Skipping backup deletion because one or more backup locations were missing.");
     }
-    this.Update_Text_Interface(missingBackups ? $"Files for {n} were reverted with warnings." : $"Files for {n} have been reverted.");
+
+    if (failedBackupLocations.Count > 0)
+    {
+      string failureDetails = string.Join(", ", failedBackupLocations);
+      this.UpdateTextInterface($"Files for {n} reverted with {failedBackupLocations.Count} warning(s): {failureDetails}");
+    }
+    else
+    {
+      this.UpdateTextInterface($"Files for {n} have been reverted.");
+    }
   }
 
   private void DeleteBackupFilesAfterRevert(string backupExecutablePath)
   {
-    this.Append_Log("Delete backups after revert: enabled.");
+    var game = this.TryGetGameConfig(out _);
+    if (game == null)
+      return;
+
+    this.AppendLog("Delete backups after revert: enabled.");
     if (File.Exists(backupExecutablePath))
     {
-      this.Append_Log($"Deleting backup file: {backupExecutablePath}");
+      this.AppendLog($"Deleting backup file: {backupExecutablePath}");
       File.Delete(backupExecutablePath);
     }
-    this.DeleteFilesInDirectory(".\\GameData\\Motion\\Player\\Backup");
-    if (this.Box_GameSelect.SelectedIndex == 0)
-      this.DeleteFilesInDirectory(".\\GameData\\Motion\\Beach\\Backup");
-    else if (this.Box_GameSelect.SelectedIndex == 1)
-      this.DeleteFilesInDirectory(".\\GameData\\Ui\\Backup");
-  }
+
+      foreach (string dataDir in game.RequiredDataDirectories)
+      {
+        string backupDir = Path.Combine(dataDir, BackupDirectoryName);
+        this.DeleteFilesInDirectory(backupDir);
+      }
+    }
 
   private void ValidationCheck()
   {
@@ -335,66 +419,110 @@ public class MainForm : Form
     this.Button_Revert.Enabled = gameSelected;
   }
 
-  private async Task Update_Aspect_Ratios(int a)
+  /// <summary>Applies aspect ratio patches to the selected game's executable and data files.</summary>
+  /// <param name="ratio">The replacement aspect ratio value to patch into the game files.</param>
+  private async Task UpdateAspectRatios(int ratio)
   {
-    if (this.Box_GameSelect.SelectedIndex == 0)
-    {
-      await this.Patch_Senran_Kagura_Estival_Versus_Async(a);
-    }
-    else
-    {
-      if (this.Box_GameSelect.SelectedIndex != 1)
-        return;
-      await this.Patch_Senran_Kagura_Burst_ReNewal_Async(a);
-    }
-  }
+    var game = this.TryGetGameConfig(out _);
+    if (game == null)
+      return;
 
-  private async Task Patch_Senran_Kagura_Estival_Versus_Async(int ratio)
-  {
-    this.Append_Log($"Patching executable: {this.SKEVEXEID} (backup: {this.SKEVEXEID + this.ext})");
-    await Task.Run((Action) (() => this.Patch_SKEV_Application(ratio)));
-    int beachFileCount = Directory.GetFiles(".\\GameData\\Motion\\Beach", "*.cat").Length;
-    this.Append_Log($"Patching {beachFileCount} beach scene file(s) in .\\GameData\\Motion\\Beach");
-    await this.Patch_SKEV_Beach_Menu(ratio);
-    int creativeFileCount = Directory.GetFiles(".\\GameData\\Placement\\plbg", "*.cat").Length;
-    this.Append_Log($"Patching {creativeFileCount} creative finish file(s) in .\\GameData\\Placement\\plbg");
-    await this.Patch_SKEV_Creative_Finishes(ratio);
-    int characterFileCount = Directory.GetFiles(".\\GameData\\Motion\\Player", "*cam.cat").Length;
-    this.Append_Log($"Patching {characterFileCount} character camera file(s) in .\\GameData\\Motion\\Player");
-    await this.Patch_Character_Files(ratio);
-    this.Update_Text_Interface("SK Estival Versus Patched.");
-  }
+    this.AppendLog($"Patching executable: {game.ExecutablePath} (backup: {game.ExecutablePath + this.ext})");
+    await Task.Run((Action) (() => this.PatchGameExecutable(game, ratio)));
 
-  private void Patch_SKEV_Application(int ratio)
-  {
-    int[] numArray = [2366806, 5721776, 6086588];
-    if (!File.Exists(this.SKEVEXEID + this.ext))
-      File.Copy(this.SKEVEXEID, this.SKEVEXEID + this.ext);
-    using FileStream fileStream = new(this.SKEVEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-    using BinaryWriter binaryWriter = new((Stream) fileStream);
-    for (int index = 0; index < numArray.Length; ++index)
+    if (game.RequiredDataDirectories.Contains(GameDataMotionBeachPath))
     {
-      binaryWriter.BaseStream.Position = (long) numArray[index];
-      binaryWriter.Write(ratio);
+      int beachFileCount = Directory.GetFiles(GameDataMotionBeachPath, BeachFilePattern).Length;
+      this.AppendLog($"Patching {beachFileCount} beach scene file(s) in {GameDataMotionBeachPath}");
+      await this.PatchSKEVBeachMenu(ratio);
     }
+
+    if (game.RequiredDataDirectories.Contains(GameDataPlacementPlbgPath))
+    {
+      int creativeFileCount = Directory.GetFiles(GameDataPlacementPlbgPath, FinishFilePattern).Length;
+      this.AppendLog($"Patching {creativeFileCount} creative finish file(s) in {GameDataPlacementPlbgPath}");
+      await this.PatchSKEVCreativeFinishes(ratio);
+    }
+
+    if (game.RequiredDataDirectories.Contains(GameDataUiPath))
+    {
+      string[] uiFiles = MainForm.GetUiPatchFiles();
+      int uiFileCount = uiFiles.Length;
+      this.AppendLog($"Patching {uiFileCount} UI file(s) in {GameDataUiPath}");
+      await this.PatchUi(ratio);
+    }
+
+    if (game.RequiredDataDirectories.Contains(GameDataMotionPlayerPath))
+    {
+      int characterFileCount = Directory.GetFiles(GameDataMotionPlayerPath, CharacterFilePattern).Length;
+      this.AppendLog($"Patching {characterFileCount} character camera file(s) in {GameDataMotionPlayerPath}");
+      await this.PatchCharacterFiles(ratio);
+    }
+
+    this.UpdateTextInterface($"{game.DisplayName} Patched.");
   }
 
   private void EnsureBackupFile(string filePath, string backupDirectory)
   {
     string backupFile = Path.Combine(backupDirectory, Path.GetFileName(filePath));
+    string? backupFileDirectory = Path.GetDirectoryName(backupFile);
+    if (!string.IsNullOrEmpty(backupFileDirectory) && !Directory.Exists(backupFileDirectory))
+      Directory.CreateDirectory(backupFileDirectory);
     if (!File.Exists(backupFile))
     {
-      this.Append_Log($"Creating backup: {backupFile}");
+      this.AppendLog($"Creating backup: {backupFile}");
       File.Copy(filePath, backupFile, false);
     }
     else
-      this.Append_Log($"Backup already exists: {backupFile}");
+      this.AppendLog($"Backup already exists: {backupFile}");
+  }
+
+  private void EnsureBackupFileWithRelativePath(
+    string filePath,
+    string sourceRootDirectory,
+    string backupDirectory)
+  {
+    string relativeFilePath = Path.GetRelativePath(sourceRootDirectory, filePath);
+    string backupFile = Path.Combine(backupDirectory, relativeFilePath);
+    string? backupFileDirectory = Path.GetDirectoryName(backupFile);
+    if (!string.IsNullOrEmpty(backupFileDirectory) && !Directory.Exists(backupFileDirectory))
+      Directory.CreateDirectory(backupFileDirectory);
+    if (!File.Exists(backupFile))
+    {
+      this.AppendLog($"Creating backup: {backupFile}");
+      File.Copy(filePath, backupFile, false);
+    }
+    else
+      this.AppendLog($"Backup already exists: {backupFile}");
   }
 
   private void PatchBinaryFile(string filePath, string backupDirectory, int replacementValue, params int[] tokens)
   {
     this.EnsureBackupFile(filePath, backupDirectory);
-    this.Append_Log($"Patching file: {filePath}");
+    this.PatchBinaryFileInternal(filePath, replacementValue, tokens);
+  }
+
+  private void PatchBinaryFileWithRelativeBackup(
+    string filePath,
+    string sourceRootDirectory,
+    string backupDirectory,
+    int replacementValue,
+    params int[] tokens)
+  {
+    this.EnsureBackupFileWithRelativePath(filePath, sourceRootDirectory, backupDirectory);
+    this.PatchBinaryFileInternal(filePath, replacementValue, tokens);
+  }
+
+  /// <summary>
+  /// Scans a binary file for specific token values and replaces them with a replacement value.
+  /// Uses a sliding window algorithm to efficiently search through large files.
+  /// </summary>
+  /// <param name="filePath">Path to the binary file to patch.</param>
+  /// <param name="replacementValue">The value to write at each matched token position.</param>
+  /// <param name="tokens">Token values to search for in the file.</param>
+  private void PatchBinaryFileInternal(string filePath, int replacementValue, params int[] tokens)
+  {
+    this.AppendLog($"Patching file: {filePath}");
     HashSet<int> tokenSet = [.. tokens];
     List<long> patchPositions = [];
     const int tokenSize = 4;
@@ -430,6 +558,21 @@ public class MainForm : Form
     }
   }
 
+    private static bool IsPathWithinDirectory(string filePath, string directoryPath)
+  {
+    string fullFilePath = Path.GetFullPath(filePath);
+    string fullDirectoryPath = Path.GetFullPath(directoryPath);
+    if (!fullDirectoryPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+      fullDirectoryPath += Path.DirectorySeparatorChar;
+    return fullFilePath.StartsWith(fullDirectoryPath, StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static string[] GetUiPatchFiles()
+  {
+    string backupUiDirectory = Path.Combine(GameDataUiPath, BackupDirectoryName);
+    return [..Directory.GetFiles(GameDataUiPath, UiFilePattern, SearchOption.AllDirectories).Where(file => !MainForm.IsPathWithinDirectory(file, backupUiDirectory))];
+  }
+
   private static Task PatchFilesAsync(string[] files, Action<string> patchAction)
   {
     return Task.Run((Action) (() => Parallel.ForEach<string>(files, new ParallelOptions
@@ -438,92 +581,68 @@ public class MainForm : Form
     }, patchAction)));
   }
 
-  private async Task Patch_SKEV_Beach_Menu(int ratio)
+  private async Task PatchSKEVBeachMenu(int ratio)
   {
-    string sourceBeachDirectory = ".\\GameData\\Motion\\Beach";
-    string backupBeachDirectory = ".\\GameData\\Motion\\Beach\\Backup";
+    string backupBeachDirectory = Path.Combine(GameDataMotionBeachPath, BackupDirectoryName);
     if (!Directory.Exists(backupBeachDirectory))
       Directory.CreateDirectory(backupBeachDirectory);
-    string[] files = Directory.GetFiles(sourceBeachDirectory, "*.cat");
+    string[] files = Directory.GetFiles(GameDataMotionBeachPath, BeachFilePattern);
     await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupBeachDirectory, ratio, AspectTokenA));
   }
 
-  private async Task Patch_SKEV_Creative_Finishes(int ratio)
+  private async Task PatchSKEVCreativeFinishes(int ratio)
   {
-    string sourceFinishDirectory = ".\\GameData\\Placement\\plbg";
-    string backupFinishDirectory = ".\\GameData\\Placement\\plbg\\Backup";
+    string backupFinishDirectory = Path.Combine(GameDataPlacementPlbgPath, BackupDirectoryName);
     if (!Directory.Exists(backupFinishDirectory))
       Directory.CreateDirectory(backupFinishDirectory);
-    string[] files = Directory.GetFiles(sourceFinishDirectory, "*.cat");
+    string[] files = Directory.GetFiles(GameDataPlacementPlbgPath, FinishFilePattern);
     await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupFinishDirectory, ratio, AspectTokenA, AspectTokenB));
   }
 
-  private async Task Patch_Senran_Kagura_Burst_ReNewal_Async(int ratio)
+  private void PatchGameExecutable(GameConfig game, int ratio)
   {
-    this.Append_Log($"Patching executable: {this.SKBRNEXEID} (backup: {this.SKBRNEXEID + this.ext})");
-    await Task.Run((Action) (() => this.Patch_SKBRN_Application(ratio)));
-    int roomFileCount = Directory.GetFiles(".\\GameData\\Ui", "*data.cat").Length;
-    this.Append_Log($"Patching {roomFileCount} room menu file(s) in .\\GameData\\Ui");
-    await this.Patch_SKBRN_Room_Menus(ratio);
-    int characterFileCount = Directory.GetFiles(".\\GameData\\Motion\\Player", "*cam.cat").Length;
-    this.Append_Log($"Patching {characterFileCount} character camera file(s) in .\\GameData\\Motion\\Player");
-    await this.Patch_Character_Files(ratio);
-    this.Update_Text_Interface("SK Burst ReNewal Patched.");
-  }
-
-  private void Patch_SKBRN_Application(int ratio)
-  {
-    int[] numArray =
-    [
-      2637606,
-      6980488,
-      6991120,
-      7471796
-    ];
-    if (!File.Exists(this.SKBRNEXEID + this.ext))
-      File.Copy(this.SKBRNEXEID, this.SKBRNEXEID + this.ext);
-    using FileStream fileStream = new(this.SKBRNEXEID, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    if (!File.Exists(game.ExecutablePath + this.ext))
+      File.Copy(game.ExecutablePath, game.ExecutablePath + this.ext);
+    using FileStream fileStream = new(game.ExecutablePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
     using BinaryWriter binaryWriter = new((Stream) fileStream);
-    for (int index = 0; index < numArray.Length; ++index)
+    foreach (int offset in game.ExecutableOffsets)
     {
-      binaryWriter.BaseStream.Position = (long) numArray[index];
+      binaryWriter.BaseStream.Position = (long) offset;
       binaryWriter.Write(ratio);
     }
   }
 
-  private async Task Patch_SKBRN_Room_Menus(int ratio)
+  private async Task PatchUi(int ratio)
   {
-    string sourceRoomDirectory = ".\\GameData\\Ui";
-    string backupRoomDirectory = ".\\GameData\\Ui\\Backup";
-    if (!Directory.Exists(backupRoomDirectory))
-      Directory.CreateDirectory(backupRoomDirectory);
-    string[] files = Directory.GetFiles(sourceRoomDirectory, "*data.cat");
-    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupRoomDirectory, ratio, AspectTokenB));
+    string backupUiDirectory = Path.Combine(GameDataUiPath, BackupDirectoryName);
+    if (!Directory.Exists(backupUiDirectory))
+      Directory.CreateDirectory(backupUiDirectory);
+    string[] files = MainForm.GetUiPatchFiles();
+    await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFileWithRelativeBackup(file, GameDataUiPath, backupUiDirectory, ratio, AspectTokenB));
   }
 
-  private async Task Patch_Character_Files(int ratio)
+  private async Task PatchCharacterFiles(int ratio)
   {
-    string sourceDirectory = ".\\GameData\\Motion\\Player";
-    string backupDirectory = ".\\GameData\\Motion\\Player\\Backup";
+    string backupDirectory = Path.Combine(GameDataMotionPlayerPath, BackupDirectoryName);
     if (!Directory.Exists(backupDirectory))
       Directory.CreateDirectory(backupDirectory);
-    string[] files = Directory.GetFiles(sourceDirectory, "*cam.cat");
+    string[] files = Directory.GetFiles(GameDataMotionPlayerPath, CharacterFilePattern);
     await MainForm.PatchFilesAsync(files, file => this.PatchBinaryFile(file, backupDirectory, ratio, AspectTokenA, AspectTokenB));
   }
 
-  private void Append_Log(string s)
+  private void AppendLog(string s)
   {
     if (this.Box_Log == null || this.Box_Log.IsDisposed)
       return;
     if (this.Box_Log.InvokeRequired)
     {
-      this.Box_Log.BeginInvoke((Delegate) new Action<string>(this.Append_Log), s);
+      this.Box_Log.BeginInvoke((Delegate) new Action<string>(this.AppendLog), s);
       return;
     }
     this.Box_Log.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
   }
 
-  private void Button_ToggleLog_Click(object? sender, EventArgs e)
+  private void ButtonToggleLogClick(object? sender, EventArgs e)
   {
     bool showLog = !this.Box_Log.Visible;
     this.Box_Log.Visible = showLog;
@@ -531,10 +650,12 @@ public class MainForm : Form
     this.ClientSize = showLog ? this.ExpandedWindowSize : this.CollapsedWindowSize;
   }
 
-  private void Update_Text_Interface(string s)
+  private void UpdateTextInterface(string s)
   {
+    if (this.Text_Output == null || this.Text_Output.IsDisposed)
+      return;
     this.Text_Output.Text = s;
-    this.Append_Log(s);
+    this.AppendLog(s);
   }
 
   protected override void Dispose(bool disposing)
@@ -560,17 +681,20 @@ public class MainForm : Form
     ((ISupportInitialize) this.Box_Image).BeginInit();
     this.SuspendLayout();
     this.Box_GameSelect.FormattingEnabled = true;
-    this.Box_GameSelect.Items.AddRange(new object[2]
+    this.Box_GameSelect.Items.AddRange(new object[5]
     {
       (object) "SENRAN KAGURA Estival Versus (EV)",
-      (object) "SENRAN KAGURA Burst Re:Newal (BrN)"
+      (object) "SENRAN KAGURA Burst Re:Newal (BrN)",
+      (object) "SENRAN KAGURA Peach Beach Splash (PBS)",
+      (object) "SENRAN KAGURA Reflexions",
+      (object) "SENRAN KAGURA Peach Ball"
     });
     this.Box_GameSelect.Location = new Point(12, 226);
     this.Box_GameSelect.Name = "Box_GameSelect";
     this.Box_GameSelect.Size = new Size(500, 23);
     this.Box_GameSelect.TabIndex = 0;
     this.Box_GameSelect.Text = "Game Select";
-    this.Box_GameSelect.SelectedIndexChanged += this.Box_GameSelect_SelectedIndexChanged;
+    this.Box_GameSelect.SelectedIndexChanged += this.BoxGameSelectSelectedIndexChanged;
     this.Box_AspectRatio.Enabled = false;
     this.Box_AspectRatio.FormattingEnabled = true;
     this.Box_AspectRatio.Items.AddRange(new object[7]
@@ -588,7 +712,7 @@ public class MainForm : Form
     this.Box_AspectRatio.Size = new Size(171, 23);
     this.Box_AspectRatio.TabIndex = 1;
     this.Box_AspectRatio.Text = "Aspect Ratio";
-    this.Box_AspectRatio.SelectedIndexChanged += this.Box_AspectRatio_SelectedIndexChanged;
+    this.Box_AspectRatio.SelectedIndexChanged += this.BoxAspectRatioSelectedIndexChanged;
     this.Button_Revert.Enabled = false;
     this.Button_Revert.Location = new Point(12, 285);
     this.Button_Revert.Name = "Button_Revert";
@@ -596,7 +720,7 @@ public class MainForm : Form
     this.Button_Revert.TabIndex = 2;
     this.Button_Revert.Text = "Revert";
     this.Button_Revert.UseVisualStyleBackColor = true;
-    this.Button_Revert.Click += this.Button_Revert_Click;
+    this.Button_Revert.Click += this.ButtonRevertClick;
     this.Button_Apply.Enabled = false;
     this.Button_Apply.Location = new Point(189, 285);
     this.Button_Apply.Name = "Button_Apply";
@@ -604,7 +728,7 @@ public class MainForm : Form
     this.Button_Apply.TabIndex = 3;
     this.Button_Apply.Text = "Apply";
     this.Button_Apply.UseVisualStyleBackColor = true;
-    this.Button_Apply.Click += this.Button_Apply_Click;
+    this.Button_Apply.Click += this.ButtonApplyClick;
     this.Box_Image.Image = (Image) SenranKaguraAspectMOD.Properties.Resources._4827930348255969816;
     this.Box_Image.Location = new Point(12, 12);
     this.Box_Image.Name = "Box_Image";
@@ -639,7 +763,7 @@ public class MainForm : Form
     this.Button_ToggleLog.TabIndex = 9;
     this.Button_ToggleLog.Text = "Show Log";
     this.Button_ToggleLog.UseVisualStyleBackColor = true;
-    this.Button_ToggleLog.Click += this.Button_ToggleLog_Click;
+    this.Button_ToggleLog.Click += this.ButtonToggleLogClick;
     this.Box_Log.Location = new Point(12, 356);
     this.Box_Log.Multiline = true;
     this.Box_Log.Name = "Box_Log";
@@ -668,10 +792,11 @@ public class MainForm : Form
     });
     this.FormBorderStyle = FormBorderStyle.FixedSingle;
     this.Name = "MainForm";
-    this.Text = "Senran Kagura EV-BrN Aspect Ratio MOD Tool - Version 1.2";
+    this.Text = "Senran Kagura Aspect Ratio MOD Tool - Version 2";
     ((ISupportInitialize) this.Box_Image).EndInit();
     this.ResumeLayout(false);
     this.PerformLayout();
   }
 
   }
+
